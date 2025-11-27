@@ -36,6 +36,7 @@ android {
 
 dependencies {
 
+    implementation("androidx.navigation:navigation-compose:2.7.0")
     // Compose BOM
     implementation(platform(libs.androidx.compose.bom))
 
