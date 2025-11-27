@@ -3,24 +3,26 @@ package com.trios2025dej.androidapp1
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.trios2025dej.androidapp1.ui.theme.AndroidApp1Theme
 
 // ------------------ DATA CLASS -----------------------
 data class Expense(
@@ -34,37 +36,39 @@ data class Expense(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { App() }
-    }
-}
-
-// ------------------ ROOT APP -------------------------
-@Composable
-fun App() {
-    var showChart by remember { mutableStateOf(false) }
-    var expenses by remember { mutableStateOf(listOf<Expense>()) }
-    var monthlyBudget by remember { mutableStateOf("") }
-
-    MaterialTheme {
-        if (showChart) {
-            ChartScreen(
-                expenses = expenses,
-                onBack = { showChart = false }
-            )
-        } else {
-            ExpenseScreen(
-                monthlyBudget = monthlyBudget,
-                onBudgetChange = { monthlyBudget = it },
-                expenses = expenses,
-                onExpensesChange = { expenses = it },
-                onShowChart = { showChart = true }
-            )
+        setContent {
+            AndroidApp1Theme {
+                AppRoot()
+            }
         }
     }
 }
 
+// ------------------ ROOT APP (HOME + CHART) ---------
+@Composable
+fun AppRoot() {
+    var showChart by remember { mutableStateOf(false) }
+    var expenses by remember { mutableStateOf(listOf<Expense>()) }
+    var monthlyBudget by remember { mutableStateOf("") }
+
+    if (showChart) {
+        CategoryChartScreen(
+            expenses = expenses,
+            monthlyBudget = monthlyBudget.toDoubleOrNull() ?: 0.0,
+            onBack = { showChart = false }
+        )
+    } else {
+        ExpenseScreen(
+            monthlyBudget = monthlyBudget,
+            onBudgetChange = { monthlyBudget = it },
+            expenses = expenses,
+            onExpensesChange = { expenses = it },
+            onShowChart = { showChart = true }
+        )
+    }
+}
+
 // ------------------ MAIN EXPENSE SCREEN --------------
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpenseScreen(
     monthlyBudget: String,
@@ -80,35 +84,56 @@ fun ExpenseScreen(
     val categories = listOf("General", "Food", "Transport", "Bills", "Shopping", "Other")
     var expanded by remember { mutableStateOf(false) }
 
+    var editingId by remember { mutableStateOf<Int?>(null) }
+
     val total = expenses.sumOf { it.amount }
-    val budgetValue = monthlyBudget.toFloatOrNull() ?: 0f
-    val remaining = budgetValue - total.toFloat()
+    val budgetValue = monthlyBudget.toDoubleOrNull() ?: 0.0
+    val remaining = budgetValue - total
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
+            // Custom top bar WITHOUT experimental APIs
+            Surface(
+                color = MaterialTheme.colorScheme.primary,
+                shadowElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        "Expense Tracker",
+                        text = "Expense Tracker",
                         style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
                         )
                     )
                 }
-            )
+            }
         }
     ) { pad ->
         Column(
-            modifier = Modifier.padding(pad).padding(16.dp)
+            modifier = Modifier
+                .padding(pad)
+                .padding(16.dp)
         ) {
             // ---------------- BUDGET ----------------------
-            Text("Monthly Budget", fontWeight = FontWeight.Bold)
+            Text(
+                text = "Monthly Budget",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(Modifier.height(6.dp))
 
             OutlinedTextField(
                 value = monthlyBudget,
                 onValueChange = onBudgetChange,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Enter monthly budget") }
             )
 
             Spacer(Modifier.height(8.dp))
@@ -117,7 +142,7 @@ fun ExpenseScreen(
                 onClick = { onBudgetChange("") },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = null)
+                Icon(Icons.Filled.Refresh, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
                 Text("Reset Monthly Budget")
             }
@@ -125,14 +150,27 @@ fun ExpenseScreen(
             Spacer(Modifier.height(14.dp))
 
             Text(
-                "Remaining: $${"%.2f".format(remaining)}",
-                fontWeight = FontWeight.Bold,
+                text = "Total Spent: $${"%.2f".format(total)}",
+                style = MaterialTheme.typography.bodyLarge
+            )
+
+            Text(
+                text = "Remaining: $${"%.2f".format(remaining)}",
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                 color = if (remaining < 0) Color.Red else Color(0xFF006400)
             )
 
             Spacer(Modifier.height(20.dp))
 
-            // ---------------- ADD EXPENSE ----------------
+            // ---------------- ADD / EDIT EXPENSE ----------------
+            Text(
+                text = if (editingId == null) "Add New Expense" else "Edit Expense",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(Modifier.height(8.dp))
+
             OutlinedTextField(
                 value = amount,
                 onValueChange = { amount = it },
@@ -180,14 +218,30 @@ fun ExpenseScreen(
                 onClick = {
                     val a = amount.toDoubleOrNull()
                     if (a != null) {
-                        onExpensesChange(
-                            expenses + Expense(
-                                id = expenses.size + 1,
-                                amount = a,
-                                note = note,
-                                category = category
+                        if (editingId == null) {
+                            // Add new
+                            onExpensesChange(
+                                expenses + Expense(
+                                    id = (expenses.maxOfOrNull { it.id } ?: 0) + 1,
+                                    amount = a,
+                                    note = note,
+                                    category = category
+                                )
                             )
-                        )
+                        } else {
+                            // Save edit
+                            onExpensesChange(
+                                expenses.map {
+                                    if (it.id == editingId) it.copy(
+                                        amount = a,
+                                        note = note,
+                                        category = category
+                                    ) else it
+                                }
+                            )
+                            editingId = null
+                        }
+                        // Clear form
                         amount = ""
                         note = ""
                         category = "General"
@@ -195,7 +249,7 @@ fun ExpenseScreen(
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Add Expense")
+                Text(if (editingId == null) "Add Expense" else "Save Changes")
             }
 
             Spacer(Modifier.height(16.dp))
@@ -205,7 +259,7 @@ fun ExpenseScreen(
                 onClick = onShowChart,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.BarChart, null)
+                Icon(Icons.Filled.BarChart, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
                 Text("View Spending Chart")
             }
@@ -213,9 +267,34 @@ fun ExpenseScreen(
             Spacer(Modifier.height(20.dp))
 
             // ---------------- LIST -------------------------
+            Text(
+                text = "Expenses",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(Modifier.height(8.dp))
+
             LazyColumn {
-                items(expenses) { e ->
-                    ExpenseCard(e)
+                items(expenses, key = { it.id }) { e ->
+                    ExpenseCard(
+                        e = e,
+                        onEdit = {
+                            editingId = e.id
+                            amount = e.amount.toString()
+                            note = e.note
+                            category = e.category
+                        },
+                        onDelete = {
+                            onExpensesChange(expenses.filter { it.id != e.id })
+                            if (editingId == e.id) {
+                                editingId = null
+                                amount = ""
+                                note = ""
+                                category = "General"
+                            }
+                        }
+                    )
                     Spacer(Modifier.height(10.dp))
                 }
             }
@@ -225,80 +304,159 @@ fun ExpenseScreen(
 
 // ------------------ EXPENSE CARD ---------------------
 @Composable
-fun ExpenseCard(e: Expense) {
+fun ExpenseCard(
+    e: Expense,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(4.dp)
+        elevation = CardDefaults.cardElevation(4.dp),
+        shape = RoundedCornerShape(12.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Amount: $${"%.2f".format(e.amount)}")
-            Text("Category: ${e.category}")
-            if (e.note.isNotEmpty()) Text("Note: ${e.note}")
-        }
-    }
-}
-
-// ------------------ PIE CHART SCREEN -----------------
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ChartScreen(expenses: List<Expense>, onBack: () -> Unit) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Spending Chart") },
-                navigationIcon = {
-                    Button(onClick = onBack) { Text("Back") }
-                }
-            )
-        }
-    ) { pad ->
         Column(
-            modifier = Modifier.padding(pad).padding(16.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
         ) {
-            Text("Category Breakdown", fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(20.dp))
-
-            val grouped = expenses.groupBy { it.category }
-            val total = expenses.sumOf { it.amount }.toFloat()
-
-            val chartData: List<Pair<String, Float>> =
-                grouped.map { entry ->
-                    val categoryTotal = entry.value.sumOf { it.amount }.toFloat()
-                    val sweep = if (total > 0f) (categoryTotal / total) * 360f else 0f
-                    entry.key to sweep
-                }
-
-            Canvas(
-                modifier = Modifier.size(300.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                var start = 0f
-                val colors = listOf(
-                    Color.Red, Color.Blue, Color.Green,
-                    Color.Magenta, Color.Cyan, Color.Yellow
-                )
-
-                chartData.forEachIndexed { i, (_, sweep) ->
-                    drawPieArc(
-                        color = colors[i % colors.size],
-                        start = start,
-                        sweep = sweep
+                Column {
+                    Text(
+                        text = "$${"%.2f".format(e.amount)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
                     )
-                    start += sweep
+                    Text(
+                        text = e.category,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray
+                    )
                 }
+
+                Row {
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Filled.Edit, contentDescription = "Edit")
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Delete")
+                    }
+                }
+            }
+
+            if (e.note.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(e.note, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
 }
 
-// CUSTOM ARC WITHOUT drawArc ERROR
-fun DrawScope.drawPieArc(color: Color, start: Float, sweep: Float) {
-    val rect = Rect(0f, 0f, size.width, size.height)
-    drawArc(
-        color = color,
-        startAngle = start,
-        sweepAngle = sweep,
-        useCenter = true,
-        topLeft = rect.topLeft,
-        size = rect.size
-    )
+// ------------------ BAR CHART SCREEN -----------------
+@Composable
+fun CategoryChartScreen(
+    expenses: List<Expense>,
+    monthlyBudget: Double,
+    onBack: () -> Unit
+) {
+    Scaffold(
+        topBar = {
+            Surface(
+                color = MaterialTheme.colorScheme.primary,
+                shadowElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onBack) {
+                        Text(
+                            text = "Back",
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Spending Chart",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
+                }
+            }
+        }
+    ) { pad ->
+        Column(
+            modifier = Modifier
+                .padding(pad)
+                .padding(16.dp)
+        ) {
+            val totalsByCategory = expenses
+                .groupBy { it.category }
+                .mapValues { entry -> entry.value.sumOf { it.amount } }
+
+            val grandTotal = totalsByCategory.values.sum()
+
+            Text(
+                text = "Monthly Budget: $${"%.2f".format(monthlyBudget)}",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = "Total Spent: $${"%.2f".format(grandTotal)}",
+                style = MaterialTheme.typography.bodyLarge
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            if (grandTotal <= 0.0) {
+                Text("No expenses yet to show chart.")
+            } else {
+                LazyColumn {
+                    items(totalsByCategory.toList(), key = { it.first }) { (category, total) ->
+                        val percent = (total / grandTotal * 100.0).toFloat()
+
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(category, fontWeight = FontWeight.Bold)
+                                Text("${"%.1f".format(percent)}%")
+                            }
+
+                            Spacer(Modifier.height(4.dp))
+
+                            // Simple bar using Boxes – no Canvas
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(16.dp)
+                                    .background(
+                                        color = Color.LightGray.copy(alpha = 0.4f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(percent / 100f)
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primary,
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                )
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
